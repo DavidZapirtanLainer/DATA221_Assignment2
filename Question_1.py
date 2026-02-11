@@ -14,8 +14,9 @@ for token in token_words:
 
     token = token.strip(string.punctuation) #Removes punctuation from beginning and end of each token
 
-    #Adding all tokens that are greater than 2 letters long and are composed of alphabetic characters
-    if token.isalpha() and len(token) >= 0:
+    # Checking that each token has at least 2 alphabetic characters
+    alphabetic_characters = [char for char in token if char.isalpha()]
+    if len(alphabetic_characters) >= 2:
         list_of_tokens.append(token)
 
 word_counts = Counter(list_of_tokens)
@@ -26,3 +27,8 @@ for word, count in top_10_most_frequent_words:
     print(f"{word} -> {count}")
 
 sample_text_file.close()
+for word, count in top_10_most_frequent_words:
+    print(f"{word} -> {count}")
+
+sample_text_file.close()
+
