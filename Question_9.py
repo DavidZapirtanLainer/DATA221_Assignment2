@@ -1,67 +1,85 @@
+import csv
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-
 
 url = "https://en.wikipedia.org/wiki/Machine_learning"
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-}
 
-
+headers = {"User-Agent": "Mozilla/5.0"}
 response = requests.get(url, headers=headers)
-soup = BeautifulSoup(response.text, "html5lib")
 
-#Locate the main content div
+soup = BeautifulSoup(response.text, features="html.parser")
+
 content_div = soup.find("div", id="mw-content-text")
 
-#Find all tables and filter for the first one with >= 3 data rows
+#Find first table with at least 3 data rows
 target_table = None
-for table in content_div.find_all("table"):
-    # Count rows that are not headers (contain <td> tags)
-    rows = table.find_all("tr")
-    data_rows = [row for row in rows if row.find("td")]
 
-    if len(data_rows) >= 3:
+for table in content_div.find_all("table"):
+    rows = table.find_all("tr")
+    data_row_count = 0
+
+    for r in rows:
+        if r.find_all(["td", "th"]):
+            data_row_count += 1
+
+    if data_row_count >= 3:
         target_table = table
         break
 
-if target_table:
-    #Extract Headers
-    header_tags = target_table.find_all("th")
-    if header_tags:
-        headers = [th.get_text(strip=True) for th in header_tags]
-    else:
-        #If no th peek at the first data row to determine column count
-        first_row = target_table.find("tr").find_all(["td", "th"])
-        headers = [f"col{i + 1}" for i in range(len(first_row))]
+if not target_table:
+    print("No table with at least 3 rows found")
+    exit(1)
 
-    #Extract Rows and Pad Missing Values
-    all_data = []
-    num_cols = len(headers)
+rows = target_table.find_all("tr")
 
-    #Iterate through all table rows
-    for tr in target_table.find_all("tr"):
-        cells = tr.find_all(["td", "th"])
+#Find row with th tags to use as header
+header_row_index = -1
+headers = None
 
-        #Skip the header row if we already processed it
-        if not cells or (header_tags and all(c in header_tags for c in cells)):
-            continue
+for i, r in enumerate(rows):
+    th_cells = r.find_all("th")
+    if th_cells:
+        headers = [h.get_text(" ", strip=True) for h in th_cells]
+        header_row_index = i
+        break
 
-        row_data = [c.get_text(strip=True) for c in cells]
+#If no th found, create col x headers
+if headers is None:
+    max_cols = 0
+    for r in rows:
+        cols = r.find_all(["td", "th"])
+        max_cols = max(max_cols, len(cols))
+    headers = [f"col{i + 1}" for i in range(max_cols)]
 
-        #Pad with empty strings if the row is too short
-        while len(row_data) < num_cols:
-            row_data.append("")
+#Determine max columns
+max_cols = len(headers)
 
-        #Truncate if the row is somehow too long
-        row_data = row_data[:num_cols]
 
-        all_data.append(row_data)
+data = []
 
-    #Save to CSV using pandas
-    df = pd.DataFrame(all_data, columns=headers)
-    df.to_csv("wiki_table.csv", index=False)
-    print("Table successfully saved to wiki_table.csv")
-else:
-    print("No suitable table found.")
+for i, r in enumerate(rows):
+    if i == header_row_index:
+        continue
+
+    cells = r.find_all(["th", "td"])
+    if not cells:
+        continue
+
+    row_text = [c.get_text(" ", strip=True) for c in cells]
+
+    #Pad missing columns with empty strings
+    if len(row_text) < max_cols:
+        row_text += [""] * (max_cols - len(row_text))
+    elif len(row_text) > max_cols:
+        row_text = row_text[:max_cols]
+
+    data.append(row_text)
+
+#Write to csv
+with open("wiki_table.csv", "w", newline="", encoding="utf-8") as f:
+    writer = csv.writer(f)
+    writer.writerow(headers)
+    writer.writerows(data)
+
+print("Saved table to wiki_table.csv")
+print(f"Rows saved: {len(data)}")
